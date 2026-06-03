@@ -9,6 +9,8 @@
       max-width: 1360px;
       margin: 40px auto;
       padding: 0 20px;
+      color: #1c2430;
+      background: #f7f8fb;
     }
 
     #dropzone {
@@ -17,7 +19,8 @@
       padding: 40px;
       text-align: center;
       cursor: pointer;
-      background: #fafafa;
+      background: #fff;
+      box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);
     }
 
     #dropzone.dragover {
@@ -28,27 +31,52 @@
     canvas {
       border: 1px solid #ccc;
       image-rendering: pixelated;
-      margin-top: 12px;
+      margin: 0;
+      display: block;
     }
 
     .preview-canvas {
-      width: 640px;
-      height: 400px;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 10;
     }
 
     .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+      align-items: start;
+      margin-top: 32px;
+    }
+
+    .stack {
       display: flex;
-      gap: 30px;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      margin-top: 30px;
+      flex-direction: column;
+      gap: 24px;
+      min-width: 0;
+    }
+
+    .panel {
+      padding: 18px;
+      border: 1px solid #d8dee7;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+      box-shadow: 0 12px 30px rgba(17, 24, 39, 0.05);
+      min-width: 0;
+    }
+
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 16px;
+      line-height: 1.25;
+      font-weight: 650;
     }
 
     .palette {
       display: flex;
-      margin-top: 16px;
+      margin-top: 14px;
       border: 1px solid #ccc;
-      width: 320px;
+      width: 100%;
       height: 32px;
     }
 
@@ -57,9 +85,31 @@
     }
 
     button {
-      margin-top: 16px;
+      margin-top: 14px;
       padding: 10px 14px;
       font-size: 14px;
+      width: 100%;
+    }
+
+    @media (max-width: 1100px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      body {
+        margin: 20px auto;
+        padding: 0 16px;
+      }
+
+      #dropzone {
+        padding: 28px 18px;
+      }
+
+      .panel {
+        padding: 16px;
+      }
     }
   </style>
 </head>
@@ -72,16 +122,28 @@
   </div>
 
   <div class="row">
-    <div>
-      <h2>Cropped and resized image (2x)</h2>
-      <canvas id="sourceCanvas" class="preview-canvas" width="320" height="200"></canvas>
+    <div class="stack">
+      <section class="panel">
+        <h2>Cropped and resized image (2x)</h2>
+        <canvas id="sourceCanvas" class="preview-canvas" width="320" height="200"></canvas>
+      </section>
+      <section class="panel">
+        <h2>Cropped image (2x)</h2>
+        <canvas id="croppedSourceCanvas" class="preview-canvas" width="320" height="200"></canvas>
+      </section>
     </div>
 
-    <div>
-      <h2>Quantized image (2x)</h2>
-      <canvas id="outputCanvas" class="preview-canvas" width="320" height="200"></canvas>
-      <div id="palette" class="palette"></div>
-      <button id="downloadBtn" disabled>Download PNG</button>
+    <div class="stack">
+      <section class="panel">
+        <h2>Quantized image (2x) (of the cropped and resized original)</h2>
+        <canvas id="outputCanvas" class="preview-canvas" width="320" height="200"></canvas>
+        <div id="palette" class="palette"></div>
+        <button id="downloadBtn" disabled>Download PNG</button>
+      </section>
+      <section class="panel">
+        <h2>Quantized image (2x) (of the cropped only original)</h2>
+        <canvas id="croppedOutputCanvas" class="preview-canvas" width="320" height="200"></canvas>
+      </section>
     </div>
   </div>
 

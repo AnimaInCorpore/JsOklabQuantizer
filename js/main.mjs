@@ -16,12 +16,18 @@ const LIGHTNESS_MODE = "image";
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
 const sourceCanvas = document.getElementById("sourceCanvas");
+const croppedSourceCanvas = document.getElementById("croppedSourceCanvas");
 const outputCanvas = document.getElementById("outputCanvas");
+const croppedOutputCanvas = document.getElementById("croppedOutputCanvas");
 const paletteEl = document.getElementById("palette");
 const downloadBtn = document.getElementById("downloadBtn");
 
 const sourceCtx = sourceCanvas.getContext("2d");
+const croppedSourceCtx = croppedSourceCanvas.getContext("2d");
 const outputCtx = outputCanvas.getContext("2d");
+const croppedOutputCtx = croppedOutputCanvas.getContext("2d");
+
+let processToken = 0;
 
 dropzone.addEventListener("click", () => fileInput.click());
 
@@ -59,30 +65,32 @@ downloadBtn.addEventListener("click", () => {
 });
 
 async function processFile(file) {
+  const token = ++processToken;
   const bitmap = await createImageBitmap(file);
 
   try {
-    drawCroppedImage(sourceCtx, bitmap, WIDTH, HEIGHT);
-
-    const imageData = sourceCtx.getImageData(0, 0, WIDTH, HEIGHT);
-    const data = imageData.data;
-
-    const labs = [];
-
-    for (let i = 0; i < data.length; i += 4) {
-      const lab = rgb8ToOklab(data[i], data[i + 1], data[i + 2]);
-
-      labs.push({
-        L: lab.L,
-        a: lab.a,
-        b: lab.b,
-        alpha: data[i + 3]
-      });
+    if (token !== processToken) {
+      return;
     }
 
-    const opaqueLabs = labs.filter(p => p.alpha > 0);
-    const palette = buildConstrainedOklabPalette(
-      opaqueLabs,
+    drawSourceImage(sourceCtx, bitmap, WIDTH, HEIGHT, false);
+    drawSourceImage(croppedSourceCtx, bitmap, WIDTH, HEIGHT, true);
+
+    const resizedPixels = extractLabs(sourceCtx.getImageData(0, 0, WIDTH, HEIGHT).data);
+    const croppedPixels = extractLabs(
+      croppedSourceCtx.getImageData(0, 0, WIDTH, HEIGHT).data
+    );
+
+    const resizedPalette = buildConstrainedOklabPalette(
+      resizedPixels.filter(p => p.alpha > 0),
+      COLOR_COUNT,
+      {
+        iterations: KMEANS_ITERATIONS,
+        lightnessMode: LIGHTNESS_MODE
+      }
+    );
+    const croppedPalette = buildConstrainedOklabPalette(
+      croppedPixels.filter(p => p.alpha > 0),
       COLOR_COUNT,
       {
         iterations: KMEANS_ITERATIONS,
@@ -90,27 +98,9 @@ async function processFile(file) {
       }
     );
 
-    const out = outputCtx.createImageData(WIDTH, HEIGHT);
-
-    for (let p = 0; p < labs.length; p++) {
-      const lab = labs[p];
-
-      if (lab.alpha === 0) {
-        out.data[p * 4 + 3] = 0;
-        continue;
-      }
-
-      const nearest = findNearestPaletteColor(lab, palette);
-      const rgb = oklabToRgb8(nearest.L, nearest.a, nearest.b);
-
-      out.data[p * 4] = rgb.r;
-      out.data[p * 4 + 1] = rgb.g;
-      out.data[p * 4 + 2] = rgb.b;
-      out.data[p * 4 + 3] = lab.alpha;
-    }
-
-    outputCtx.putImageData(out, 0, 0);
-    renderPalette(palette);
+    renderQuantizedImage(outputCtx, resizedPixels, resizedPalette);
+    renderQuantizedImage(croppedOutputCtx, croppedPixels, croppedPalette);
+    renderPalette(resizedPalette);
     downloadBtn.disabled = false;
   } finally {
     if (typeof bitmap.close === "function") {
@@ -119,7 +109,34 @@ async function processFile(file) {
   }
 }
 
-function drawCroppedImage(ctx, image, targetWidth, targetHeight) {
+function drawSourceImage(ctx, image, targetWidth, targetHeight, cropOnly) {
+  ctx.clearRect(0, 0, targetWidth, targetHeight);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  if (cropOnly) {
+    const cropWidth = Math.min(targetWidth, image.width);
+    const cropHeight = Math.min(targetHeight, image.height);
+    const sx = Math.floor((image.width - cropWidth) / 2);
+    const sy = Math.floor((image.height - cropHeight) / 2);
+    const dx = Math.floor((targetWidth - cropWidth) / 2);
+    const dy = Math.floor((targetHeight - cropHeight) / 2);
+
+    ctx.drawImage(
+      image,
+      sx,
+      sy,
+      cropWidth,
+      cropHeight,
+      dx,
+      dy,
+      cropWidth,
+      cropHeight
+    );
+
+    return;
+  }
+
   const sourceWidth = image.width;
   const sourceHeight = image.height;
   const targetAspect = targetWidth / targetHeight;
@@ -152,6 +169,46 @@ function drawCroppedImage(ctx, image, targetWidth, targetHeight) {
     targetWidth,
     targetHeight
   );
+}
+
+function extractLabs(data) {
+  const labs = [];
+
+  for (let i = 0; i < data.length; i += 4) {
+    const lab = rgb8ToOklab(data[i], data[i + 1], data[i + 2]);
+
+    labs.push({
+      L: lab.L,
+      a: lab.a,
+      b: lab.b,
+      alpha: data[i + 3]
+    });
+  }
+
+  return labs;
+}
+
+function renderQuantizedImage(ctx, labs, palette) {
+  const out = ctx.createImageData(WIDTH, HEIGHT);
+
+  for (let p = 0; p < labs.length; p++) {
+    const lab = labs[p];
+
+    if (lab.alpha === 0) {
+      out.data[p * 4 + 3] = 0;
+      continue;
+    }
+
+    const nearest = findNearestPaletteColor(lab, palette);
+    const rgb = oklabToRgb8(nearest.L, nearest.a, nearest.b);
+
+    out.data[p * 4] = rgb.r;
+    out.data[p * 4 + 1] = rgb.g;
+    out.data[p * 4 + 2] = rgb.b;
+    out.data[p * 4 + 3] = lab.alpha;
+  }
+
+  ctx.putImageData(out, 0, 0);
 }
 
 function renderPalette(palette) {
