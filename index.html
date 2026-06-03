@@ -87,6 +87,29 @@
       flex: 1;
     }
 
+    .control {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .control input[type="range"] {
+      flex: 1;
+    }
+
+    .control output {
+      font-variant-numeric: tabular-nums;
+      min-width: 3ch;
+      text-align: right;
+      font-weight: 650;
+    }
+
+    .control .hint {
+      margin: 10px 0 0;
+      font-size: 13px;
+      color: #5a6573;
+    }
+
     @media (max-width: 1100px) {
       .row {
         grid-template-columns: 1fr;
@@ -118,32 +141,54 @@
   </div>
 
   <section class="panel palette-panel">
-    <h2>Resulting palette</h2>
+    <h2>Lightness fatness bias</h2>
+    <div class="control">
+      <input
+        id="fatnessBias"
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value="0.75"
+      />
+      <output id="fatnessBiasValue">0.75</output>
+    </div>
+    <p class="hint">
+      0 spaces lightness levels evenly; 1 packs them toward the "fatter"
+      mid-tones of the OKLab body where more colors live.
+    </p>
+  </section>
+
+  <section class="panel palette-panel">
+    <h2>Resulting palette (cropped and resized)</h2>
     <div id="palette" class="palette"></div>
   </section>
 
   <div class="row">
-    <div class="stack">
-      <section class="panel">
-        <h2>Cropped and resized image (2x)</h2>
-        <canvas id="sourceCanvas" class="preview-canvas" width="320" height="200"></canvas>
-      </section>
-      <section class="panel">
-        <h2>Cropped image (2x)</h2>
-        <canvas id="croppedSourceCanvas" class="preview-canvas" width="320" height="200"></canvas>
-      </section>
-    </div>
+    <section class="panel">
+      <h2>Cropped and resized image (2x)</h2>
+      <canvas id="sourceCanvas" class="preview-canvas" width="320" height="200"></canvas>
+    </section>
+    <section class="panel">
+      <h2>Quantized image (2x) (of the cropped and resized original)</h2>
+      <canvas id="outputCanvas" class="preview-canvas" width="320" height="200"></canvas>
+    </section>
+  </div>
 
-    <div class="stack">
-      <section class="panel">
-        <h2>Quantized image (2x) (of the cropped and resized original)</h2>
-        <canvas id="outputCanvas" class="preview-canvas" width="320" height="200"></canvas>
-      </section>
-      <section class="panel">
-        <h2>Quantized image (2x) (of the cropped only original)</h2>
-        <canvas id="croppedOutputCanvas" class="preview-canvas" width="320" height="200"></canvas>
-      </section>
-    </div>
+  <section class="panel palette-panel">
+    <h2>Resulting palette (cropped only)</h2>
+    <div id="croppedPalette" class="palette"></div>
+  </section>
+
+  <div class="row">
+    <section class="panel">
+      <h2>Cropped image (2x)</h2>
+      <canvas id="croppedSourceCanvas" class="preview-canvas" width="320" height="200"></canvas>
+    </section>
+    <section class="panel">
+      <h2>Quantized image (2x) (of the cropped only original)</h2>
+      <canvas id="croppedOutputCanvas" class="preview-canvas" width="320" height="200"></canvas>
+    </section>
   </div>
 
   <script type="module" src="./js/main.mjs"></script>

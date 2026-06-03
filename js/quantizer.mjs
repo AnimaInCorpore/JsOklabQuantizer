@@ -1,9 +1,22 @@
-import { gamutMapOklab } from "./color.mjs";
+import {
+  gamutMapOklab,
+  isInSrgbGamut,
+  oklabToLinearSrgb
+} from "./color.mjs";
+
+// Default for how strongly the lightness ladder bends toward the "fatter" parts
+// of the OKLab body. 0 keeps even spacing; 1 places levels purely by gamut
+// volume. Override per call via the fatnessBias option.
+const DEFAULT_FATNESS_BIAS = 0.75;
 
 export function buildConstrainedOklabPalette(
   pixels,
   count,
-  { iterations = 18, lightnessMode = "image" } = {}
+  {
+    iterations = 18,
+    lightnessMode = "image",
+    fatnessBias = DEFAULT_FATNESS_BIAS
+  } = {}
 ) {
   if (pixels.length === 0) {
     return Array.from({ length: count }, (_, i) => ({
@@ -16,7 +29,8 @@ export function buildConstrainedOklabPalette(
   const lightnessLevels = makeEqualLightnessLevels(
     pixels,
     count,
-    lightnessMode
+    lightnessMode,
+    fatnessBias
   );
 
   let palette = initializePaletteFromLightnessBuckets(
@@ -87,7 +101,7 @@ export function findNearestPaletteIndex(pixel, palette) {
   return bestIndex;
 }
 
-function makeEqualLightnessLevels(pixels, count, lightnessMode) {
+function makeEqualLightnessLevels(pixels, count, lightnessMode, fatnessBias) {
   let minL;
   let maxL;
 
@@ -109,11 +123,119 @@ function makeEqualLightnessLevels(pixels, count, lightnessMode) {
     }
   }
 
+  return makeFatnessWeightedLevels(minL, maxL, count, fatnessBias);
+}
+
+// Distribute the lightness ladder so that more levels land where the sRGB
+// gamut is "fat" in OKLab (the mid-tones, which hold far more colors than the
+// near-black and near-white tips of the body). Levels are placed at equal
+// cumulative gamut area via inverse-CDF sampling, with the endpoints pinned.
+function makeFatnessWeightedLevels(minL, maxL, count, fatnessBias) {
   const denominator = Math.max(1, count - 1);
+  const bias = Math.max(0, Math.min(1, fatnessBias));
+
+  if (maxL - minL < 1e-6) {
+    return Array.from({ length: count }, () => minL);
+  }
+
+  const samples = 96;
+  const ls = new Array(samples + 1);
+  const density = new Array(samples + 1);
+
+  let maxArea = 0;
+  const areas = new Array(samples + 1);
+
+  for (let i = 0; i <= samples; i++) {
+    const L = minL + (i / samples) * (maxL - minL);
+    ls[i] = L;
+    areas[i] = gamutSliceArea(L);
+    if (areas[i] > maxArea) {
+      maxArea = areas[i];
+    }
+  }
+
+  // Blend a flat baseline with the normalized gamut area so the dark and light
+  // ends still receive levels instead of collapsing toward the middle.
+  for (let i = 0; i <= samples; i++) {
+    const normalized = maxArea > 0 ? areas[i] / maxArea : 0;
+    density[i] = 1 - bias + bias * normalized;
+  }
+
+  // Trapezoidal integration of the density into a cumulative mass curve.
+  const cumulative = new Array(samples + 1);
+  cumulative[0] = 0;
+  for (let i = 1; i <= samples; i++) {
+    cumulative[i] = cumulative[i - 1] + (density[i] + density[i - 1]) / 2;
+  }
+
+  const total = cumulative[samples];
+  if (total <= 0) {
+    return Array.from({ length: count }, (_, i) =>
+      minL + (i / denominator) * (maxL - minL)
+    );
+  }
 
   return Array.from({ length: count }, (_, i) => {
-    return minL + (i / denominator) * (maxL - minL);
+    const targetMass = (i / denominator) * total;
+    return invertCumulative(cumulative, ls, targetMass);
   });
+}
+
+// Relative area of the sRGB gamut slice at this lightness in the OKLab a/b
+// plane, summed as pie sectors from the max in-gamut chroma per hue.
+function gamutSliceArea(L) {
+  const hueSteps = 16;
+  let area = 0;
+
+  for (let h = 0; h < hueSteps; h++) {
+    const angle = (h / hueSteps) * Math.PI * 2;
+    const chroma = maxChromaAt(L, Math.cos(angle), Math.sin(angle));
+    area += chroma * chroma; // sector area ∝ r²; constant factors cancel
+  }
+
+  return area;
+}
+
+// Largest chroma along the (ca, cb) direction whose color stays inside sRGB.
+function maxChromaAt(L, ca, cb) {
+  if (!isInSrgbGamut(oklabToLinearSrgb(L, 0, 0))) {
+    return 0;
+  }
+
+  let low = 0;
+  let high = 0.5; // sRGB chroma in OKLab never reaches this far
+
+  for (let i = 0; i < 20; i++) {
+    const mid = (low + high) / 2;
+
+    if (isInSrgbGamut(oklabToLinearSrgb(L, ca * mid, cb * mid))) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+// Find L where the cumulative curve reaches targetMass (linear interpolation).
+function invertCumulative(cumulative, ls, targetMass) {
+  const n = cumulative.length - 1;
+
+  if (targetMass <= cumulative[0]) {
+    return ls[0];
+  }
+
+  for (let i = 1; i <= n; i++) {
+    if (cumulative[i] >= targetMass) {
+      const span = cumulative[i] - cumulative[i - 1];
+      const t = span > 0 ? (targetMass - cumulative[i - 1]) / span : 0;
+
+      return ls[i - 1] + t * (ls[i] - ls[i - 1]);
+    }
+  }
+
+  return ls[n];
 }
 
 function initializePaletteFromLightnessBuckets(pixels, lightnessLevels) {

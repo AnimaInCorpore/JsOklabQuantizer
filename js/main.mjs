@@ -20,6 +20,9 @@ const croppedSourceCanvas = document.getElementById("croppedSourceCanvas");
 const outputCanvas = document.getElementById("outputCanvas");
 const croppedOutputCanvas = document.getElementById("croppedOutputCanvas");
 const paletteEl = document.getElementById("palette");
+const croppedPaletteEl = document.getElementById("croppedPalette");
+const fatnessBiasInput = document.getElementById("fatnessBias");
+const fatnessBiasValue = document.getElementById("fatnessBiasValue");
 
 const sourceCtx = sourceCanvas.getContext("2d");
 const croppedSourceCtx = croppedSourceCanvas.getContext("2d");
@@ -28,7 +31,16 @@ const croppedOutputCtx = croppedOutputCanvas.getContext("2d");
 
 let processToken = 0;
 
+// Pixels of the most recent image, kept so the bias slider can re-quantize
+// without re-decoding the file.
+let lastPixels = null;
+
 dropzone.addEventListener("click", () => fileInput.click());
+
+fatnessBiasInput.addEventListener("input", () => {
+  fatnessBiasValue.textContent = Number(fatnessBiasInput.value).toFixed(2);
+  renderQuantization();
+});
 
 fileInput.addEventListener("change", event => {
   const file = event.target.files[0];
@@ -73,31 +85,44 @@ async function processFile(file) {
       croppedSourceCtx.getImageData(0, 0, WIDTH, HEIGHT).data
     );
 
-    const resizedPalette = buildConstrainedOklabPalette(
-      resizedPixels.filter(p => p.alpha > 0),
-      COLOR_COUNT,
-      {
-        iterations: KMEANS_ITERATIONS,
-        lightnessMode: LIGHTNESS_MODE
-      }
-    );
-    const croppedPalette = buildConstrainedOklabPalette(
-      croppedPixels.filter(p => p.alpha > 0),
-      COLOR_COUNT,
-      {
-        iterations: KMEANS_ITERATIONS,
-        lightnessMode: LIGHTNESS_MODE
-      }
-    );
-
-    renderQuantizedImage(outputCtx, resizedPixels, resizedPalette);
-    renderQuantizedImage(croppedOutputCtx, croppedPixels, croppedPalette);
-    renderPalette(resizedPalette);
+    lastPixels = { resizedPixels, croppedPixels };
+    renderQuantization();
   } finally {
     if (typeof bitmap.close === "function") {
       bitmap.close();
     }
   }
+}
+
+function renderQuantization() {
+  if (!lastPixels) {
+    return;
+  }
+
+  const { resizedPixels, croppedPixels } = lastPixels;
+  const fatnessBias = Number(fatnessBiasInput.value);
+
+  const options = {
+    iterations: KMEANS_ITERATIONS,
+    lightnessMode: LIGHTNESS_MODE,
+    fatnessBias
+  };
+
+  const resizedPalette = buildConstrainedOklabPalette(
+    resizedPixels.filter(p => p.alpha > 0),
+    COLOR_COUNT,
+    options
+  );
+  const croppedPalette = buildConstrainedOklabPalette(
+    croppedPixels.filter(p => p.alpha > 0),
+    COLOR_COUNT,
+    options
+  );
+
+  renderQuantizedImage(outputCtx, resizedPixels, resizedPalette);
+  renderQuantizedImage(croppedOutputCtx, croppedPixels, croppedPalette);
+  renderPalette(paletteEl, resizedPalette);
+  renderPalette(croppedPaletteEl, croppedPalette);
 }
 
 function drawSourceImage(ctx, image, targetWidth, targetHeight, cropOnly) {
@@ -202,8 +227,8 @@ function renderQuantizedImage(ctx, labs, palette) {
   ctx.putImageData(out, 0, 0);
 }
 
-function renderPalette(palette) {
-  paletteEl.innerHTML = "";
+function renderPalette(targetEl, palette) {
+  targetEl.innerHTML = "";
 
   for (let i = 0; i < palette.length; i++) {
     const color = palette[i];
@@ -218,6 +243,6 @@ function renderPalette(palette) {
       `A=${color.a.toFixed(4)}, ` +
       `B=${color.b.toFixed(4)}`;
 
-    paletteEl.appendChild(swatch);
+    targetEl.appendChild(swatch);
   }
 }
