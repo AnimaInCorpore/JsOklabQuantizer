@@ -139,6 +139,8 @@ function drawCroppedImage(ctx, image, targetWidth, targetHeight) {
   }
 
   ctx.clearRect(0, 0, targetWidth, targetHeight);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(
     image,
     sx,
