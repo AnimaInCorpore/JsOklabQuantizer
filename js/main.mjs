@@ -20,7 +20,6 @@ const croppedSourceCanvas = document.getElementById("croppedSourceCanvas");
 const outputCanvas = document.getElementById("outputCanvas");
 const croppedOutputCanvas = document.getElementById("croppedOutputCanvas");
 const paletteEl = document.getElementById("palette");
-const downloadBtn = document.getElementById("downloadBtn");
 
 const sourceCtx = sourceCanvas.getContext("2d");
 const croppedSourceCtx = croppedSourceCanvas.getContext("2d");
@@ -55,13 +54,6 @@ dropzone.addEventListener("drop", event => {
   if (file && file.type.startsWith("image/")) {
     processFile(file);
   }
-});
-
-downloadBtn.addEventListener("click", () => {
-  const link = document.createElement("a");
-  link.download = "oklab-16-color-quantized.png";
-  link.href = outputCanvas.toDataURL("image/png");
-  link.click();
 });
 
 async function processFile(file) {
@@ -101,7 +93,6 @@ async function processFile(file) {
     renderQuantizedImage(outputCtx, resizedPixels, resizedPalette);
     renderQuantizedImage(croppedOutputCtx, croppedPixels, croppedPalette);
     renderPalette(resizedPalette);
-    downloadBtn.disabled = false;
   } finally {
     if (typeof bitmap.close === "function") {
       bitmap.close();

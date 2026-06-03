@@ -10,7 +10,6 @@ A small browser-based image quantizer that reduces an image to a 16-color palett
 - Builds a constrained 16-color palette with Oklab k-means clustering
 - Preserves transparency
 - Shows the generated palette
-- Downloads the quantized result as a PNG
 
 ## How to use
 
@@ -18,7 +17,7 @@ A small browser-based image quantizer that reduces an image to a 16-color palett
 2. Open `index.html` in your browser.
 3. Drop an image onto the page or click the drop area to choose a file.
 4. Review the resized source preview, cropped source preview, and both quantized results.
-5. Click **Download PNG** to save the result.
+5. Review the rendered output and palette.
 
 ### Local server example
 
