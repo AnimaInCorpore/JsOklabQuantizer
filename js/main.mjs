@@ -23,6 +23,8 @@ const paletteEl = document.getElementById("palette");
 const croppedPaletteEl = document.getElementById("croppedPalette");
 const fatnessBiasInput = document.getElementById("fatnessBias");
 const fatnessBiasValue = document.getElementById("fatnessBiasValue");
+const colorDecayInput = document.getElementById("colorDecay");
+const colorDecayValue = document.getElementById("colorDecayValue");
 
 const sourceCtx = sourceCanvas.getContext("2d");
 const croppedSourceCtx = croppedSourceCanvas.getContext("2d");
@@ -39,6 +41,11 @@ dropzone.addEventListener("click", () => fileInput.click());
 
 fatnessBiasInput.addEventListener("input", () => {
   fatnessBiasValue.textContent = Number(fatnessBiasInput.value).toFixed(2);
+  renderQuantization();
+});
+
+colorDecayInput.addEventListener("input", () => {
+  colorDecayValue.textContent = Number(colorDecayInput.value).toFixed(2);
   renderQuantization();
 });
 
@@ -101,11 +108,13 @@ function renderQuantization() {
 
   const { resizedPixels, croppedPixels } = lastPixels;
   const fatnessBias = Number(fatnessBiasInput.value);
+  const colorDecay = Number(colorDecayInput.value);
 
   const options = {
     iterations: KMEANS_ITERATIONS,
     lightnessMode: LIGHTNESS_MODE,
-    fatnessBias
+    fatnessBias,
+    colorDecay
   };
 
   const resizedPalette = buildConstrainedOklabPalette(
@@ -197,7 +206,10 @@ function extractLabs(data) {
       L: lab.L,
       a: lab.a,
       b: lab.b,
-      alpha: data[i + 3]
+      alpha: data[i + 3],
+      // Packed RGB identity; identical source pixels share a key so the decay
+      // function can down-weight repeats within a cluster.
+      key: (data[i] << 16) | (data[i + 1] << 8) | data[i + 2]
     });
   }
 

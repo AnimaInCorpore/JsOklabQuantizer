@@ -15,9 +15,11 @@ export function buildConstrainedOklabPalette(
   {
     iterations = 18,
     lightnessMode = "image",
-    fatnessBias = DEFAULT_FATNESS_BIAS
+    fatnessBias = DEFAULT_FATNESS_BIAS,
+    colorDecay = 0
   } = {}
 ) {
+  const decay = Math.max(0, Math.min(1, colorDecay));
   if (pixels.length === 0) {
     return Array.from({ length: count }, (_, i) => ({
       L: count > 1 ? i / (count - 1) : 0,
@@ -45,12 +47,21 @@ export function buildConstrainedOklabPalette(
       count: 0
     }));
 
+    // Per-cluster tally of how many times each identical color has been seen
+    // this iteration, so repeated colors can be down-weighted via decay.
+    const seen = Array.from({ length: count }, () => new Map());
+
     for (const pixel of pixels) {
       const index = findNearestPaletteIndex(pixel, palette);
 
-      sums[index].a += pixel.a;
-      sums[index].b += pixel.b;
-      sums[index].count++;
+      const occurrences = seen[index].get(pixel.key) || 0;
+      seen[index].set(pixel.key, occurrences + 1);
+
+      const weight = decayWeight(occurrences, decay);
+
+      sums[index].a += pixel.a * weight;
+      sums[index].b += pixel.b * weight;
+      sums[index].count += weight;
     }
 
     for (let i = 0; i < count; i++) {
@@ -73,6 +84,17 @@ export function buildConstrainedOklabPalette(
   }
 
   return palette;
+}
+
+// Geometric weight for the nth identical color within a cluster. decay 0 keeps
+// every pixel at weight 1; decay 1 makes only the first occurrence (n=0) count,
+// collapsing each unique color to a single vote.
+function decayWeight(occurrences, decay) {
+  if (decay <= 0) {
+    return 1;
+  }
+
+  return Math.pow(1 - decay, occurrences);
 }
 
 export function findNearestPaletteColor(pixel, palette) {

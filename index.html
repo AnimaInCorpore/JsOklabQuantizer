@@ -160,6 +160,26 @@
   </section>
 
   <section class="panel palette-panel">
+    <h2>Identical color decay</h2>
+    <div class="control">
+      <input
+        id="colorDecay"
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value="0"
+      />
+      <output id="colorDecayValue">0.00</output>
+    </div>
+    <p class="hint">
+      0 counts every pixel equally; higher values geometrically down-weight
+      repeated identical colors within a cluster, so large flat regions stop
+      dominating the averaged palette color. 1 counts each unique color once.
+    </p>
+  </section>
+
+  <section class="panel palette-panel">
     <h2>Resulting palette (cropped and resized)</h2>
     <div id="palette" class="palette"></div>
   </section>
