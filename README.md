@@ -5,7 +5,7 @@ A small browser-based image quantizer that reduces an image to a 16-color palett
 ## What it does
 
 - Accepts an image by drag-and-drop or file picker
-- Resizes the source image to `320x200`
+- Crops and resizes the source image to `320x200` when the aspect ratio does not match
 - Builds a constrained 16-color palette with Oklab k-means clustering
 - Preserves transparency
 - Shows the generated palette
@@ -16,7 +16,7 @@ A small browser-based image quantizer that reduces an image to a 16-color palett
 1. Serve the project from a local web server.
 2. Open `index.html` in your browser.
 3. Drop an image onto the page or click the drop area to choose a file.
-4. Review the resized source preview, quantized output, and palette.
+4. Review the cropped and resized source preview, quantized output, and palette.
 5. Click **Download PNG** to save the result.
 
 ### Local server example

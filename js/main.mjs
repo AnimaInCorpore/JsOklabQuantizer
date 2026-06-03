@@ -61,57 +61,95 @@ downloadBtn.addEventListener("click", () => {
 async function processFile(file) {
   const bitmap = await createImageBitmap(file);
 
-  sourceCtx.clearRect(0, 0, WIDTH, HEIGHT);
-  sourceCtx.drawImage(bitmap, 0, 0, WIDTH, HEIGHT);
+  try {
+    drawCroppedImage(sourceCtx, bitmap, WIDTH, HEIGHT);
 
-  const imageData = sourceCtx.getImageData(0, 0, WIDTH, HEIGHT);
-  const data = imageData.data;
+    const imageData = sourceCtx.getImageData(0, 0, WIDTH, HEIGHT);
+    const data = imageData.data;
 
-  const labs = [];
+    const labs = [];
 
-  for (let i = 0; i < data.length; i += 4) {
-    const lab = rgb8ToOklab(data[i], data[i + 1], data[i + 2]);
+    for (let i = 0; i < data.length; i += 4) {
+      const lab = rgb8ToOklab(data[i], data[i + 1], data[i + 2]);
 
-    labs.push({
-      L: lab.L,
-      a: lab.a,
-      b: lab.b,
-      alpha: data[i + 3]
-    });
+      labs.push({
+        L: lab.L,
+        a: lab.a,
+        b: lab.b,
+        alpha: data[i + 3]
+      });
+    }
+
+    const opaqueLabs = labs.filter(p => p.alpha > 0);
+    const palette = buildConstrainedOklabPalette(
+      opaqueLabs,
+      COLOR_COUNT,
+      {
+        iterations: KMEANS_ITERATIONS,
+        lightnessMode: LIGHTNESS_MODE
+      }
+    );
+
+    const out = outputCtx.createImageData(WIDTH, HEIGHT);
+
+    for (let p = 0; p < labs.length; p++) {
+      const lab = labs[p];
+
+      if (lab.alpha === 0) {
+        out.data[p * 4 + 3] = 0;
+        continue;
+      }
+
+      const nearest = findNearestPaletteColor(lab, palette);
+      const rgb = oklabToRgb8(nearest.L, nearest.a, nearest.b);
+
+      out.data[p * 4] = rgb.r;
+      out.data[p * 4 + 1] = rgb.g;
+      out.data[p * 4 + 2] = rgb.b;
+      out.data[p * 4 + 3] = lab.alpha;
+    }
+
+    outputCtx.putImageData(out, 0, 0);
+    renderPalette(palette);
+    downloadBtn.disabled = false;
+  } finally {
+    if (typeof bitmap.close === "function") {
+      bitmap.close();
+    }
+  }
+}
+
+function drawCroppedImage(ctx, image, targetWidth, targetHeight) {
+  const sourceWidth = image.width;
+  const sourceHeight = image.height;
+  const targetAspect = targetWidth / targetHeight;
+  const sourceAspect = sourceWidth / sourceHeight;
+
+  let sx = 0;
+  let sy = 0;
+  let sWidth = sourceWidth;
+  let sHeight = sourceHeight;
+
+  if (sourceAspect > targetAspect) {
+    sWidth = sourceHeight * targetAspect;
+    sx = (sourceWidth - sWidth) / 2;
+  } else if (sourceAspect < targetAspect) {
+    sHeight = sourceWidth / targetAspect;
+    sy = (sourceHeight - sHeight) / 2;
   }
 
-  const opaqueLabs = labs.filter(p => p.alpha > 0);
-  const palette = buildConstrainedOklabPalette(
-    opaqueLabs,
-    COLOR_COUNT,
-    {
-      iterations: KMEANS_ITERATIONS,
-      lightnessMode: LIGHTNESS_MODE
-    }
+  ctx.clearRect(0, 0, targetWidth, targetHeight);
+  ctx.drawImage(
+    image,
+    sx,
+    sy,
+    sWidth,
+    sHeight,
+    0,
+    0,
+    targetWidth,
+    targetHeight
   );
-
-  const out = outputCtx.createImageData(WIDTH, HEIGHT);
-
-  for (let p = 0; p < labs.length; p++) {
-    const lab = labs[p];
-
-    if (lab.alpha === 0) {
-      out.data[p * 4 + 3] = 0;
-      continue;
-    }
-
-    const nearest = findNearestPaletteColor(lab, palette);
-    const rgb = oklabToRgb8(nearest.L, nearest.a, nearest.b);
-
-    out.data[p * 4] = rgb.r;
-    out.data[p * 4 + 1] = rgb.g;
-    out.data[p * 4 + 2] = rgb.b;
-    out.data[p * 4 + 3] = lab.alpha;
-  }
-
-  outputCtx.putImageData(out, 0, 0);
-  renderPalette(palette);
-  downloadBtn.disabled = false;
 }
 
 function renderPalette(palette) {
