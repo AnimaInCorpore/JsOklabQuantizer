@@ -15,10 +15,8 @@ const LIGHTNESS_MODE = "image";
 
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
-const sourceCanvas = document.getElementById("sourceCanvas");
-const croppedSourceCanvas = document.getElementById("croppedSourceCanvas");
-const outputCanvas = document.getElementById("outputCanvas");
-const croppedOutputCanvas = document.getElementById("croppedOutputCanvas");
+const resizedImagesEl = document.getElementById("resizedImages");
+const croppedImagesEl = document.getElementById("croppedImages");
 const paletteEl = document.getElementById("palette");
 const croppedPaletteEl = document.getElementById("croppedPalette");
 const fatnessBiasInput = document.getElementById("fatnessBias");
@@ -26,16 +24,11 @@ const fatnessBiasValue = document.getElementById("fatnessBiasValue");
 const colorDecayInput = document.getElementById("colorDecay");
 const colorDecayValue = document.getElementById("colorDecayValue");
 
-const sourceCtx = sourceCanvas.getContext("2d");
-const croppedSourceCtx = croppedSourceCanvas.getContext("2d");
-const outputCtx = outputCanvas.getContext("2d");
-const croppedOutputCtx = croppedOutputCanvas.getContext("2d");
-
 let processToken = 0;
 
-// Pixels of the most recent image, kept so the bias slider can re-quantize
-// without re-decoding the file.
-let lastPixels = null;
+// Per-image pixel data and output contexts for the most recent batch, kept so
+// the sliders can re-quantize without re-decoding the files.
+let images = [];
 
 dropzone.addEventListener("click", () => fileInput.click());
 
@@ -50,10 +43,7 @@ colorDecayInput.addEventListener("input", () => {
 });
 
 fileInput.addEventListener("change", event => {
-  const file = event.target.files[0];
-  if (file) {
-    processFile(file);
-  }
+  processFiles(event.target.files);
 });
 
 dropzone.addEventListener("dragover", event => {
@@ -68,45 +58,67 @@ dropzone.addEventListener("dragleave", () => {
 dropzone.addEventListener("drop", event => {
   event.preventDefault();
   dropzone.classList.remove("dragover");
-
-  const file = event.dataTransfer.files[0];
-  if (file && file.type.startsWith("image/")) {
-    processFile(file);
-  }
+  processFiles(event.dataTransfer.files);
 });
 
-async function processFile(file) {
+async function processFiles(fileList) {
+  const files = Array.from(fileList).filter(file =>
+    file.type.startsWith("image/")
+  );
+
+  if (files.length === 0) {
+    return;
+  }
+
   const token = ++processToken;
-  const bitmap = await createImageBitmap(file);
+  const bitmaps = await Promise.all(files.map(file => createImageBitmap(file)));
 
   try {
     if (token !== processToken) {
       return;
     }
 
-    drawSourceImage(sourceCtx, bitmap, WIDTH, HEIGHT, false);
-    drawSourceImage(croppedSourceCtx, bitmap, WIDTH, HEIGHT, true);
+    resizedImagesEl.innerHTML = "";
+    croppedImagesEl.innerHTML = "";
+    images = [];
 
-    const resizedPixels = extractLabs(sourceCtx.getImageData(0, 0, WIDTH, HEIGHT).data);
-    const croppedPixels = extractLabs(
-      croppedSourceCtx.getImageData(0, 0, WIDTH, HEIGHT).data
-    );
+    for (let i = 0; i < bitmaps.length; i++) {
+      const bitmap = bitmaps[i];
+      const label = files[i].name;
 
-    lastPixels = { resizedPixels, croppedPixels };
+      const resized = createImageRow(resizedImagesEl, label);
+      const cropped = createImageRow(croppedImagesEl, label);
+
+      drawSourceImage(resized.sourceCtx, bitmap, WIDTH, HEIGHT, false);
+      drawSourceImage(cropped.sourceCtx, bitmap, WIDTH, HEIGHT, true);
+
+      images.push({
+        resizedPixels: extractLabs(
+          resized.sourceCtx.getImageData(0, 0, WIDTH, HEIGHT).data
+        ),
+        croppedPixels: extractLabs(
+          cropped.sourceCtx.getImageData(0, 0, WIDTH, HEIGHT).data
+        ),
+        resizedOutputCtx: resized.outputCtx,
+        croppedOutputCtx: cropped.outputCtx
+      });
+    }
+
     renderQuantization();
   } finally {
-    if (typeof bitmap.close === "function") {
-      bitmap.close();
+    for (const bitmap of bitmaps) {
+      if (typeof bitmap.close === "function") {
+        bitmap.close();
+      }
     }
   }
 }
 
 function renderQuantization() {
-  if (!lastPixels) {
+  if (images.length === 0) {
     return;
   }
 
-  const { resizedPixels, croppedPixels } = lastPixels;
   const fatnessBias = Number(fatnessBiasInput.value);
   const colorDecay = Number(colorDecayInput.value);
 
@@ -117,21 +129,75 @@ function renderQuantization() {
     colorDecay
   };
 
+  // Sum every image's pixels into a single pool so one shared palette covers
+  // the whole set.
+  const allResized = [];
+  const allCropped = [];
+
+  for (const image of images) {
+    for (const pixel of image.resizedPixels) {
+      if (pixel.alpha > 0) {
+        allResized.push(pixel);
+      }
+    }
+    for (const pixel of image.croppedPixels) {
+      if (pixel.alpha > 0) {
+        allCropped.push(pixel);
+      }
+    }
+  }
+
   const resizedPalette = buildConstrainedOklabPalette(
-    resizedPixels.filter(p => p.alpha > 0),
+    allResized,
     COLOR_COUNT,
     options
   );
   const croppedPalette = buildConstrainedOklabPalette(
-    croppedPixels.filter(p => p.alpha > 0),
+    allCropped,
     COLOR_COUNT,
     options
   );
 
-  renderQuantizedImage(outputCtx, resizedPixels, resizedPalette);
-  renderQuantizedImage(croppedOutputCtx, croppedPixels, croppedPalette);
+  for (const image of images) {
+    renderQuantizedImage(image.resizedOutputCtx, image.resizedPixels, resizedPalette);
+    renderQuantizedImage(image.croppedOutputCtx, image.croppedPixels, croppedPalette);
+  }
+
   renderPalette(paletteEl, resizedPalette);
   renderPalette(croppedPaletteEl, croppedPalette);
+}
+
+// Build a "<source> | <quantized>" row of canvases for one image and return
+// their drawing contexts.
+function createImageRow(container, label) {
+  const row = document.createElement("div");
+  row.className = "row";
+
+  const sourceCtx = appendCanvasPanel(row, `Source (2x) — ${label}`);
+  const outputCtx = appendCanvasPanel(row, `Quantized (2x) — ${label}`);
+
+  container.appendChild(row);
+
+  return { sourceCtx, outputCtx };
+}
+
+function appendCanvasPanel(row, title) {
+  const panel = document.createElement("section");
+  panel.className = "panel";
+
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "preview-canvas";
+  canvas.width = WIDTH;
+  canvas.height = HEIGHT;
+
+  panel.appendChild(heading);
+  panel.appendChild(canvas);
+  row.appendChild(panel);
+
+  return canvas.getContext("2d");
 }
 
 function drawSourceImage(ctx, image, targetWidth, targetHeight, cropOnly) {
