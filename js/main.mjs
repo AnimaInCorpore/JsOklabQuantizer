@@ -19,6 +19,7 @@ const resizedImagesEl = document.getElementById("resizedImages");
 const croppedImagesEl = document.getElementById("croppedImages");
 const paletteEl = document.getElementById("palette");
 const croppedPaletteEl = document.getElementById("croppedPalette");
+const originalPaletteEl = document.getElementById("originalPalette");
 const fatnessBiasInput = document.getElementById("fatnessBias");
 const fatnessBiasValue = document.getElementById("fatnessBiasValue");
 const colorDecayInput = document.getElementById("colorDecay");
@@ -92,7 +93,16 @@ async function processFiles(fileList) {
       drawSourceImage(resized.sourceCtx, bitmap, WIDTH, HEIGHT, false);
       drawSourceImage(cropped.sourceCtx, bitmap, WIDTH, HEIGHT, true);
 
+      const originalCanvas = document.createElement("canvas");
+      originalCanvas.width = bitmap.width;
+      originalCanvas.height = bitmap.height;
+      const originalCtx = originalCanvas.getContext("2d");
+      originalCtx.drawImage(bitmap, 0, 0);
+
       images.push({
+        originalPixels: extractLabs(
+          originalCtx.getImageData(0, 0, bitmap.width, bitmap.height).data
+        ).filter(pixel => pixel.alpha > 0),
         resizedPixels: extractLabs(
           resized.sourceCtx.getImageData(0, 0, WIDTH, HEIGHT).data
         ),
@@ -133,8 +143,12 @@ function renderQuantization() {
   // the whole set.
   const allResized = [];
   const allCropped = [];
+  const allOriginal = [];
 
   for (const image of images) {
+    for (const pixel of image.originalPixels) {
+      allOriginal.push(pixel);
+    }
     for (const pixel of image.resizedPixels) {
       if (pixel.alpha > 0) {
         allResized.push(pixel);
@@ -157,6 +171,11 @@ function renderQuantization() {
     COLOR_COUNT,
     options
   );
+  const originalPalette = buildConstrainedOklabPalette(
+    allOriginal,
+    COLOR_COUNT,
+    options
+  );
 
   for (const image of images) {
     renderQuantizedImage(image.resizedOutputCtx, image.resizedPixels, resizedPalette);
@@ -165,6 +184,7 @@ function renderQuantization() {
 
   renderPalette(paletteEl, resizedPalette);
   renderPalette(croppedPaletteEl, croppedPalette);
+  renderPalette(originalPaletteEl, originalPalette);
 }
 
 // Build a "<source> | <quantized>" row of canvases for one image and return

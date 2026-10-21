@@ -11,6 +11,7 @@ A small browser-based image quantizer that reduces an image to a 16-color palett
 - Quantizes and displays every image with that shared palette
 - Preserves transparency
 - Shows the generated palette
+- Also builds a summed 16-color palette from all original images at their native dimensions, without cropping or resizing; fully transparent pixels are excluded. Both sliders update this palette too. Larger images contribute more pixels and take longer to process.
 
 ## How to use
 
